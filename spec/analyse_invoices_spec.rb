@@ -7,38 +7,34 @@ describe "analyse invoices" do
     attr_accessor :type, :date, :amount
   end
 
-  class InvoiceMonth < Rubadana::Dimension
-    def name                  ; "monthly"                                       ; end
-    def group_value_for thing ; Date.new(thing.date.year, thing.date.month, 1)  ; end # rails just use #beginning_of_month
-    def value_label_for value ; value.strftime "%B %Y"                          ; end # better with I18n
+  class InvoiceMonth
+    def name        ; "monthly"                                       ; end
+    def run   thing ; Date.new(thing.date.year, thing.date.month, 1)  ; end # rails just use #beginning_of_month
+    def label value ; value.strftime "%B %Y"                          ; end # better with I18n
   end
 
-  class InvoiceYear < Rubadana::Dimension
-    def name                  ; "yearly"                                        ; end
-    def group_value_for thing ; thing.date.year                                 ; end
-    def value_label_for value ; value                                           ; end
+  class InvoiceYear
+    def name        ; "yearly"                                        ; end
+    def run   thing ; thing.date.year                                 ; end
+    def label value ; value                                           ; end
   end
 
-  class InvoiceType < Rubadana::Dimension
-    def name                  ; "type"                                          ; end
-    def group_value_for thing ; thing.type                                      ; end
-    def value_label_for value ; value.to_s                                      ; end
+  class InvoiceType
+    def name        ; "type"                                          ; end
+    def run   thing ; thing.type                                      ; end
+    def label value ; value.to_s                                      ; end
   end
 
-  class InvoiceScale < Rubadana::Dimension
-    def name                  ; "scale"                                         ; end
-    def group_value_for thing ; Math.log(thing.amount, 10).to_i                 ; end
-    def value_label_for value ; value                                           ; end
+  class InvoiceScale
+    def name        ; "scale"                                         ; end
+    def run   thing ; Math.log(thing.amount, 10).to_i                 ; end
+    def label value ; value                                           ; end
   end
 
-  class InvoiceSum < Rubadana::Summation
-    def name            ; "sum-amount" ; end
-    def value_for thing ; thing.amount ; end
-  end
-
-  class InvoiceAvg < Rubadana::Average
-    def name            ; "avg-amount" ; end
-    def value_for thing ; thing.amount ; end
+  class InvoiceAmount
+    def name        ; :invoice_amount                                 ; end
+    def run   thing ; thing.amount                                    ; end
+    def label value ; value.to_s                                      ; end
   end
 
   let(:i00) { Invoice.new type: "SalesInvoice"      , date: date("2020-02-01"), amount:     53 }
@@ -62,19 +58,21 @@ describe "analyse invoices" do
   let(:register) { Rubadana::Registry.new }
 
   before {
-    register.register_dimension   InvoiceYear.new
-    register.register_dimension   InvoiceMonth.new
-    register.register_dimension   InvoiceType.new
-    register.register_dimension   InvoiceScale.new
-    register.register_accumulator InvoiceSum.new
-    register.register_accumulator InvoiceAvg.new
-    register.register_accumulator Rubadana::Counter.new
+    register.register_mapper  InvoiceYear.new
+    register.register_mapper  InvoiceMonth.new
+    register.register_mapper  InvoiceType.new
+    register.register_mapper  InvoiceScale.new
+    register.register_mapper  InvoiceAmount.new
+    register.register_mapper  Rubadana::Self.new
+    register.register_reducer Rubadana::Sum.new
+    register.register_reducer Rubadana::Average.new
+    register.register_reducer Rubadana::Count.new
   }
 
   it "groups items by month and counts them" do
-    program  = register.build ["monthly"], ["count"]
+    program  = register.build group: %i{ monthly }, map: %i{ self }, reduce: %i{ count }
     data     = program.run(invoices)
-    actual   = data.sort_by(&:group_value).map { |d| [d.value_label] +  d.data.map(&:data) }
+    actual   = data.sort_by(&:key).map { |d| d.key_labels + d.reduced }
     expected = [
                 ["February 2020", 3],
                 ["May 2020"     , 3],
@@ -88,9 +86,10 @@ describe "analyse invoices" do
   end
 
   it "groups items by year and sums them" do
-    program  = register.build ["yearly"], ["sum-amount"]
+    program  = register.build group: %i{ yearly }, map: %i{ invoice_amount }, reduce: %i{ sum }
     data     = program.run(invoices)
-    actual   = data.sort_by(&:group_value).map { |d| [d.value_label] +  d.data.map(&:data) }
+    # data.sort_by(&:key).each { |d| puts d }
+    actual   = data.sort_by(&:key).map { |d| d.key_labels + d.reduced }
     expected = [
                 [2020, 175166],
                 [2021,   4369],
@@ -100,9 +99,9 @@ describe "analyse invoices" do
   end
 
   it "groups items by year and counts them" do
-    program  = register.build ["yearly"], ["count"]
+    program  = register.build group: %i{ yearly }, map: %i{ self }, reduce: %i{ count }
     data     = program.run(invoices)
-    actual   = data.sort_by(&:group_value).map { |d| [d.value_label] +  d.data.map(&:data) }
+    actual   = data.sort_by(&:key).map { |d| d.key_labels + d.reduced }
     expected = [
                 [2020, 8],
                 [2021, 4],
@@ -112,9 +111,9 @@ describe "analyse invoices" do
   end
 
   it "groups items by year and averages them" do
-    program  = register.build ["yearly"], ["avg-amount"]
+    program  = register.build group: %i{ yearly }, map: %i{ invoice_amount }, reduce: %i{ average }
     data     = program.run(invoices)
-    actual   = data.sort_by(&:group_value).map { |d| [d.value_label] +  d.data.map(&:data) }
+    actual   = data.sort_by(&:key).map { |d| d.key_labels + d.reduced }
     expected = [
                 [2020, 21895.75],
                 [2021,  1092.25],
@@ -124,9 +123,9 @@ describe "analyse invoices" do
   end
 
   it "groups items by year and gives the count, sum, and average" do
-    program  = register.build ["yearly"], ["count", "sum-amount", "avg-amount"]
+    program  = register.build group: %i{ yearly }, map: %i{ invoice_amount invoice_amount invoice_amount }, reduce: %i{ count sum average }
     data     = program.run(invoices)
-    actual   = data.sort_by(&:group_value).map { |d| [d.value_label] + d.data.map(&:data) }
+    actual   = data.sort_by(&:key).map { |d| d.key_labels + d.reduced }
     expected = [
                 [2020, 8, 175166, 21895.75],
                 [2021, 4,   4369,  1092.25],
@@ -135,14 +134,10 @@ describe "analyse invoices" do
     expect(actual).to eq expected
   end
 
-  it "groups items by year and by type and by scale and counts them" do
-    program  = register.build ["yearly", "type"], ["count"]
+  it "groups items by year and by type and counts them" do
+    program  = register.build group: %i{ yearly type }, map: %i{ self }, reduce: %i{ count }
     data     = program.run(invoices)
-    actual   = data.sort_by(&:group_value).inject([]) { |arr, d|
-      d.data.sort_by(&:group_value).each { |s|
-        arr << [d.value_label, s.value_label] + s.data.map(&:data) }
-      arr
-    }
+    actual   = data.sort_by(&:key).map { |d| d.key_labels + d.reduced }
 
     expected = [
                 [2020 , "PurchaseCreditNote" , 2 ],
@@ -160,13 +155,9 @@ describe "analyse invoices" do
   end
 
   it "groups items by scale and by type and sums them" do
-    program  = register.build ["scale", "type"], ["sum-amount"]
+    program  = register.build group: %i{ scale type }, map: %i{ invoice_amount }, reduce: %i{ sum }
     data     = program.run(invoices)
-    actual   = data.sort_by(&:group_value).inject([]) { |arr, d|
-      d.data.sort_by(&:group_value).each { |s|
-        arr << [d.value_label, s.value_label] +  s.data.map(&:data) }
-      arr
-    }
+    actual   = data.sort_by(&:key).map { |d| d.key_labels + d.reduced }
 
     expected = [
                 [1 , "Order"              , 59     ] ,
@@ -187,15 +178,9 @@ describe "analyse invoices" do
   end
 
   it "groups items by year and by type and by scale and counts them" do
-    program  = register.build ["yearly", "type", "scale"], ["sum-amount"]
+    program  = register.build group: %i{ yearly type scale }, map: %i{ invoice_amount }, reduce: %i{ sum }
     data     = program.run(invoices)
-    actual   = data.sort_by(&:group_value).inject([]) { |arr, d|
-      d.data.sort_by(&:group_value).each { |s|
-        s.data.sort_by(&:group_value).each { |z|
-          arr << [d.value_label, s.value_label, z.value_label] + z.data.map(&:data) }
-      }
-      arr
-    }
+    actual   = data.sort_by(&:key).map { |d| d.key_labels + d.reduced }
 
     expected = [
                 [2020 , "PurchaseCreditNote" , 1 , 23.0     ],

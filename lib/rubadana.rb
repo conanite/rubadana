@@ -3,75 +3,71 @@ require "rubadana/version"
 module Rubadana
   class Registry
     def initialize
-      @dimensions   = Hash.new
-      @accumulators = Hash.new
+      @mappers    = Hash.new
+      @reducers   = Hash.new
     end
 
-    def register_dimension    d ; @dimensions[d.name.to_sym]   = d                             ; end
-    def register_accumulator  a ; @accumulators[a.name.to_sym] = a                             ; end
-    def dimensions              ; @dimensions.values                                           ; end
-    def accumulators            ; @accumulators.values                                         ; end
-    def not_nil attr, hsh, name ; hsh[name.to_sym] || raise("unknown #{attr} #{name.inspect}") ; end
-    def dimension          name ; not_nil "dimension"  , @dimensions  , name                   ; end
-    def accumulator        name ; not_nil "accumulator", @accumulators, name                   ; end
+    def register_mapper       m ; @mappers[m.name.to_sym]  = m                                       ; end
+    def register_reducer      r ; @reducers[r.name.to_sym] = r                                       ; end
+    def mapper             name ; @mappers[name.to_sym]  || raise("unknown mapper #{name.inspect}")  ; end
+    def reducer            name ; @reducers[name.to_sym] || raise("unknown reducer #{name.inspect}") ; end
+    def mappers           names ; names.map { |n| mapper n }                                         ; end
+    def reducers          names ; names.map { |n| reducer n }                                        ; end
+    def build params            ; Programmer.new(params).build(self)                                 ; end
+  end
 
-    def build dnames, anames
-      dd = dnames.compact.map { |n| dimension   n }
-      aa = anames.compact.map { |n| accumulator n }
-      Program.new(dd + aa)
+  class Self
+    def name           ; :self  ; end
+    def run      thing ; thing  ; end
+  end
+
+  class Sum
+    def name               ; :sum              ; end
+    def reduce      things ; things.reduce(:+) ; end
+  end
+
+  class Count
+    def name          ; :count       ; end
+    def reduce things ; things.count ; end
+  end
+
+  class CountUnique
+    def name          ; :count_unique     ; end
+    def reduce things ; things.uniq.count ; end
+  end
+
+  class Average
+    def name          ; :average                                 ; end
+    def reduce things ; things.reduce(:+) / (1.0 * things.count) ; end
+  end
+
+  class Analysis < Aduki::Initializable
+    attr_accessor :program, :key, :list, :mapped, :reduced
+    def key_labels ; key_str = program.group.zip(key).map { |g,k| g.label k } ; end
+    def to_s       ; "#{key_labels.join ", "} : #{reduced.join ", "}"            ; end
+  end
+
+  class Programmer < Aduki::Initializable
+    attr_accessor :group, :map, :reduce
+    def build reg
+      Program.new group: reg.mappers(group), map: reg.mappers(map), reduce: reg.reducers(reduce)
     end
   end
 
-  class DataSet < Aduki::Initializable
-    attr_accessor :analyser, :group_value, :data
-    def value_label ; analyser.value_label_for group_value ; end
-  end
+  class Program < Aduki::Initializable
+    attr_accessor :group, :map, :reduce, :groups
 
-  class Accumulator
-    def name              ; raise "implement this and return a unique name for this accumulator"        ; end
-    def accumulate things ; raise "implement this and return a value extracted from #things"            ; end
-    def run things, after ; [DataSet.new(analyser: self, data: accumulate(things))] + after.run(things) ; end
-  end
-
-
-  class Summation < Accumulator
-    def value_for   thing ; raise "implement this and return a value extracted from #thing"       ; end
-    def accumulate things ; things.map { |thing| value_for(thing) }.reduce :+                     ; end
-  end
-
-  class Counter < Accumulator
-    def name              ; "count"           ; end
-    def accumulate things ; things.uniq.count ; end
-  end
-
-  class Average < Summation
-    def accumulate things ; super / (1.0 * things.count) ; end
-  end
-
-  class Dimension
-    def name                  ; raise "implement this and return a unique name for this dimension"    ; end
-    def group_value_for thing ; raise "implement this and return a value extracted from #thing"       ; end
-    def value_label_for value ; raise "implement this to return a display value for #{value.inspect}" ; end
-
-    def run objects, after
-      objects.group_by { |obj| group_value_for obj }.map { |value, list|
-        DataSet.new analyser: self, group_value: value, data: after.run(list)
+    def run things
+      self.groups = Hash.new { |h, k| h[k] = [] }
+      things.each { |thing|
+        groups[group.map { |g| g.run thing }] << thing
       }
-    end
-  end
 
-  class Program
-    attr_accessor :dimension, :after
-
-    def initialize dimensions
-      if dimensions
-        self.dimension = dimensions.first
-        self.after = Program.new dimensions[1..-1]
-      end
-    end
-
-    def run objects
-      dimension ? dimension.run(objects, after) : []
+      groups.map { |key, things|
+        mapped  = map.map  { |m| things.map  { |thing| m.run thing } }
+        reduced = reduce.zip(mapped).map { |r, m| r.reduce m           }
+        Analysis.new(program: self, key: key, list: things, mapped: mapped, reduced: reduced )
+      }
     end
   end
 end
