@@ -9,31 +9,31 @@ describe "analyse invoices" do
 
   class InvoiceMonth
     def name        ; "monthly"                                       ; end
-    def run   thing ; Date.new(thing.date.year, thing.date.month, 1)  ; end # rails just use #beginning_of_month
+    def map   thing ; Date.new(thing.date.year, thing.date.month, 1)  ; end # rails just use #beginning_of_month
     def label value ; value.strftime "%B %Y"                          ; end # better with I18n
   end
 
   class InvoiceYear
     def name        ; "yearly"                                        ; end
-    def run   thing ; thing.date.year                                 ; end
+    def map   thing ; thing.date.year                                 ; end
     def label value ; value                                           ; end
   end
 
   class InvoiceType
     def name        ; "type"                                          ; end
-    def run   thing ; thing.type                                      ; end
+    def map   thing ; thing.type                                      ; end
     def label value ; value.to_s                                      ; end
   end
 
   class InvoiceScale
     def name        ; "scale"                                         ; end
-    def run   thing ; Math.log(thing.amount, 10).to_i                 ; end
+    def map   thing ; Math.log(thing.amount, 10).to_i                 ; end
     def label value ; value                                           ; end
   end
 
   class InvoiceAmount
     def name        ; :invoice_amount                                 ; end
-    def run   thing ; thing.amount                                    ; end
+    def map   thing ; thing.amount                                    ; end
     def label value ; value.to_s                                      ; end
   end
 

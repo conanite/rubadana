@@ -18,7 +18,7 @@ module Rubadana
 
   class Self
     def name           ; :self  ; end
-    def run      thing ; thing  ; end
+    def map      thing ; thing  ; end
   end
 
   class Sum
@@ -60,11 +60,11 @@ module Rubadana
     def run things
       self.groups = Hash.new { |h, k| h[k] = [] }
       things.each { |thing|
-        groups[group.map { |g| g.run thing }] << thing
+        groups[group.map { |g| g.map thing }] << thing
       }
 
       groups.map { |key, things|
-        mapped  = map.map  { |m| things.map  { |thing| m.run thing } }
+        mapped  = map.map  { |m| things.map  { |thing| m.map thing } }
         reduced = reduce.zip(mapped).map { |r, m| r.reduce m           }
         Analysis.new(program: self, key: key, list: things, mapped: mapped, reduced: reduced )
       }
