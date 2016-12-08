@@ -1,42 +1,6 @@
 require "spec_helper"
 
 describe "analyse invoices" do
-  def date str ; Date.parse str ; end
-
-  class Invoice < Aduki::Initializable
-    attr_accessor :type, :date, :amount
-  end
-
-  class InvoiceMonth
-    def name        ; "monthly"                                       ; end
-    def map   thing ; Date.new(thing.date.year, thing.date.month, 1)  ; end # rails just use #beginning_of_month
-    def label value ; value.strftime "%B %Y"                          ; end # better with I18n
-  end
-
-  class InvoiceYear
-    def name        ; "yearly"                                        ; end
-    def map   thing ; thing.date.year                                 ; end
-    def label value ; value                                           ; end
-  end
-
-  class InvoiceType
-    def name        ; "type"                                          ; end
-    def map   thing ; thing.type                                      ; end
-    def label value ; value.to_s                                      ; end
-  end
-
-  class InvoiceScale
-    def name        ; "scale"                                         ; end
-    def map   thing ; Math.log(thing.amount, 10).to_i                 ; end
-    def label value ; value                                           ; end
-  end
-
-  class InvoiceAmount
-    def name        ; :invoice_amount                                 ; end
-    def map   thing ; thing.amount                                    ; end
-    def label value ; value.to_s                                      ; end
-  end
-
   let(:i00) { Invoice.new type: "SalesInvoice"      , date: date("2020-02-01"), amount:     53 }
   let(:i01) { Invoice.new type: "PurchaseInvoice"   , date: date("2021-04-02"), amount:   1100 }
   let(:i02) { Invoice.new type: "SalesCreditNote"   , date: date("2020-02-03"), amount:  23000 }
