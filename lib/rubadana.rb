@@ -5,15 +5,17 @@ module Rubadana
     def initialize
       @mappers    = Hash.new
       @reducers   = Hash.new
+      @programs   = Hash.new
     end
 
     def register_mapper       m ; @mappers[m.name.to_sym]  = m                                       ; end
     def register_reducer      r ; @reducers[r.name.to_sym] = r                                       ; end
+    def register_program      p ; @programs[p.name.to_sym] = p                                       ; end
     def mapper             name ; @mappers[name.to_sym]  || raise("unknown mapper #{name.inspect}")  ; end
     def reducer            name ; @reducers[name.to_sym] || raise("unknown reducer #{name.inspect}") ; end
     def mappers           names ; names.map { |n| mapper n }                                         ; end
     def reducers          names ; names.map { |n| reducer n }                                        ; end
-    def build params            ; Programmer.new(params).build(self)                                 ; end
+    def build            params ; Factory.new(params).build(self)                                    ; end
   end
 
   class Self
@@ -41,21 +43,36 @@ module Rubadana
     def reduce things ; things.reduce(:+) / (1.0 * things.count) ; end
   end
 
+  class Overview < Aduki::Initializable
+    attr_accessor :key_values, :data, :program
+  end
+
   class Analysis < Aduki::Initializable
     attr_accessor :program, :key, :list, :mapped, :reduced
-    def key_labels ; key_str = program.group.zip(key).map { |g,k| g.label k } ; end
-    def to_s       ; "#{key_labels.join ", "} : #{reduced.join ", "}"            ; end
+    def key_labels     ; program.group.zip(key).map { |g,k| g.label k }   ; end
+    def reduced_labels ; program.map.zip(reduced).map { |m,r| m.label r } ; end
+    def to_s           ; "#{key_labels.join ", "} : #{reduced.join ", "}" ; end
+  end
+
+  class Factory < Aduki::Initializable
+    attr_accessor :name, :group, :map, :reduce
+    def build reg
+      (0..group.size).map { |c| group.combination(c).to_a }.reduce(:+).inject({}) { |h, g|
+        h[g] = Programmer.new(factory: self, group: g, map: map, reduce: reduce).build reg
+        h
+      }
+    end
   end
 
   class Programmer < Aduki::Initializable
-    attr_accessor :group, :map, :reduce
+    attr_accessor :factory, :group, :map, :reduce
     def build reg
-      Program.new group: reg.mappers(group), map: reg.mappers(map), reduce: reg.reducers(reduce)
+      Program.new programmer: self, group: reg.mappers(group), map: reg.mappers(map), reduce: reg.reducers(reduce)
     end
   end
 
   class Program < Aduki::Initializable
-    attr_accessor :group, :map, :reduce, :groups
+    attr_accessor :programmer, :group, :map, :reduce, :groups
 
     def run things
       self.groups = Hash.new { |h, k| h[k] = [] }
@@ -63,11 +80,24 @@ module Rubadana
         groups[group.map { |g| g.map thing }] << thing
       }
 
-      groups.map { |key, things|
-        mapped  = map.map  { |m| things.map  { |thing| m.map thing } }
+      h = groups.keys.inject({ }) { |hsh, key|
+        mapped  = map.map  { |m|
+          groups[key].map  { |thing|
+            m.map thing
+          }
+        }
         reduced = reduce.zip(mapped).map { |r, m| r.reduce m           }
-        Analysis.new(program: self, key: key, list: things, mapped: mapped, reduced: reduced )
+        hsh[key] = Analysis.new(program: self, key: key, list: things, mapped: mapped, reduced: reduced )
+        hsh
       }
+
+      distinct_key_values = (0...group.size).map { |i|
+        h.values.map { |v|
+          v.key[i]
+        }
+      }
+
+      Overview.new key_values: distinct_key_values, data: h, program: self
     end
   end
 end
