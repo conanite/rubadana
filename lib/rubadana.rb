@@ -11,6 +11,7 @@ module Rubadana
     def []=       k, v ; hsh[k.to_sym] = v                                 ; end
     def find     names ; names.map { |n| self[n] }                         ; end
     def register thing ; self[thing.name] = thing                          ; end
+    def each    &block ; hsh.each &block                                   ; end
   end
 
   class Registry
@@ -50,13 +51,17 @@ module Rubadana
     def reduce things ; things.reduce(:+) / (1.0 * things.count) ; end
   end
 
-  class Overview < Aduki::Initializable
-    attr_accessor :key_values, :data, :program
-    def merge other
-      kv = key_values.zip(other.key_values).map { |kv0, kv1| kv0 + kv1 }
-      d  = data.merge(other.data)
-      self.class.new key_values: kv, data: d, program: program
+  class Grid < Aduki::Initializable
+    attr_accessor :key_values, :data, :factory, :registry
+    def merge more_key_values, more_data
+      self.key_values = key_values.zip(more_key_values).map { |kv0, kv1| kv0 + kv1 }
+      self.data       = data.merge(more_data)
+      self
     end
+    def group_label    i, value ; registry.mappers[factory.group[i]].label value ; end
+    def reduced_label  i, value ; registry.mappers[factory.map[i]]  .label value ; end
+    def reducer_count           ; factory.reduce.size                            ; end
+    def values_at          keys ; data[keys]                                     ; end
   end
 
   class Analysis < Aduki::Initializable
@@ -67,7 +72,7 @@ module Rubadana
   end
 
   class Factory < Aduki::Initializable
-    attr_accessor :name, :group, :map, :reduce
+    attr_accessor :name, :group, :map, :reduce, :present
     def combinations
       (0...(2**group.size)).map { |i|
         i = i.to_s(2).rjust(group.size, "0").split(//).map(&:to_i)
@@ -83,7 +88,9 @@ module Rubadana
     end
 
     def grid registry, things
-      build(registry).values.map { |prog| prog.run things }.reduce :merge
+      grid = Grid.new factory: self, key_values: [Set.new] * group.size, data: { }, registry: registry
+      build(registry).values.map { |prog| prog.run things, grid }
+      grid
     end
   end
 
@@ -101,7 +108,7 @@ module Rubadana
       mapper ? mapper.map(thing) : TOTAL
     end
 
-    def run things
+    def run things, grid
       self.groups = Hash.new { |h, k| h[k] = [] }
       things.each { |thing|
         groups[group.map { |g| group_key(g, thing) }] << thing
@@ -118,7 +125,7 @@ module Rubadana
         Set.new(h.values.map { |v| v.key[i] })
       }
 
-      Overview.new key_values: distinct_key_values, data: h, program: self
+      grid.merge distinct_key_values, h
     end
   end
 end
