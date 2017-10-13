@@ -51,12 +51,21 @@ module Rubadana
     def reduce things ; things.reduce(:+) / (1.0 * things.count) ; end
   end
 
+  class Latest < Aduki::Initializable
+    attr_accessor :attribute
+    def name          ; :newest                           ; end
+    def reduce things ; things.sort_by(&attribute).last   ; end
+  end
+
   class Grid < Aduki::Initializable
     attr_accessor :key_values, :data, :factory, :registry
     def merge more_key_values, more_data
       self.key_values = key_values.zip(more_key_values).map { |kv0, kv1| kv0 + kv1 }
       self.data       = data.merge(more_data)
       self
+    end
+    def keys i
+      (key_values[i].to_a - [::Rubadana::TOTAL]).sort { |a, b| a.nil? ? -1 : (b.nil? ? 1 : a <=> b) }
     end
     def group_label    i, value ; registry.mappers[factory.group[i]].label value ; end
     def reduced_label  i, value ; registry.mappers[factory.map[i]]  .label value ; end
