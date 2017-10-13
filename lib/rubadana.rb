@@ -64,13 +64,13 @@ module Rubadana
       self.data       = data.merge(more_data)
       self
     end
-    def keys i
-      (key_values[i].to_a - [::Rubadana::TOTAL]).sort { |a, b| a.nil? ? -1 : (b.nil? ? 1 : a <=> b) }
-    end
-    def group_label    i, value ; registry.mappers[factory.group[i]].label value ; end
-    def reduced_label  i, value ; registry.mappers[factory.map[i]]  .label value ; end
-    def reducer_count           ; factory.reduce.size                            ; end
-    def values_at          keys ; data[keys]                                     ; end
+    def normal_sort        a, b ; a.nil? ? -1 : (b.nil? ? 1 : a <=> b)                   ; end
+    def total_sort         a, b ; a == TOTAL ? 1 : (b == TOTAL ? -1 : normal_sort(a, b)) ; end
+    def keys                  i ; key_values[i].to_a.sort { |a, b| total_sort a, b }     ; end
+    def group_label    i, value ; registry.mappers[factory.group[i]].label value         ; end
+    def reduced_label  i, value ; registry.mappers[factory.map[i]]  .label value         ; end
+    def reducer_count           ; factory.reduce.size                                    ; end
+    def values_at          keys ; data[keys]                                             ; end
   end
 
   class Analysis < Aduki::Initializable

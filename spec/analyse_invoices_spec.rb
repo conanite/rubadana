@@ -48,7 +48,7 @@ describe "analyse invoices" do
                      date("2020-11-01")
                     ]
     expect(grid.key_values).to eq [Set.new(expected_keys)]
-    expect(grid.keys 0).to eq((expected_keys - [:__total__]).sort)
+    expect(grid.keys 0).to eq((expected_keys - [:__total__]).sort + [:__total__])
     expect(grid.data[[   :__total__     ]].reduced).to eq [16]
     expect(grid.data[[date("2020-02-01")]].reduced).to eq [3]
     expect(grid.data[[date("2020-05-01")]].reduced).to eq [3]
