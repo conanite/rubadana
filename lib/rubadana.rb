@@ -81,7 +81,10 @@ module Rubadana
   end
 
   class Factory < Aduki::Initializable
-    attr_accessor :name, :group, :map, :reduce, :present
+    attr_accessor :group, :map, :reduce, :present
+
+    def name ; group.join('_') ; end
+
     def combinations
       (0...(2**group.size)).map { |i|
         i = i.to_s(2).rjust(group.size, "0").split(//).map(&:to_i)
